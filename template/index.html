@@ -2,10 +2,116 @@
 <html>
 	<head>
 		<meta charset="utf-8">
-		<meta name="viewprt" content="width=device-width">
-		<title></title>
+		<meta name="viewport" content="width=device-width">
+		<title>text-real</title>
+		<style>
+			body {
+				margin: 0;
+				padding: 0;
+			}
+
+			header {
+				display: block;
+				position: fixed;
+				width: 100%;
+				height: 70px;
+				top: 0;
+				left: 0;
+				background-color: rgb(219, 215, 233);
+			}
+
+			#inner_header {
+				width: 100%;
+				height: 100%;
+				max-width: 1080px;
+				display: flex;
+				position: relative;
+				margin: 0 auto;
+				flex-wrap: nowrap;
+				justify-content: space-between;
+			}
+
+			#inner_header img {
+				display: inline-block;
+				width: auto;
+				height: 100%;
+			}
+
+			#header_spacer {
+				display: block;
+				width: 100%;
+				height: 70px;
+			}
+
+			main {
+				display: block;
+				position: relative;
+				margin: 0 auto;
+				width: 800px;
+				max-width: 96%;
+			}
+
+			h1 {
+				font-size: 1.5em;
+			}
+
+			form {
+				display: block;
+				position: relative;
+				border: solid 2px gray;
+				border-radius: 8px;
+				padding: 12px;
+				box-sizing: border-box;
+				width: 90%;
+				margin: 0 auto;
+			}
+
+			input {
+				padding: 5px;
+				box-sizing: border-box;
+				border: none;
+				background-color: lightgray;
+				color: black;
+				border-radius: 3px;
+				outline: none;
+				height: 30px;
+			}
+		</style>
 	</head>
 	<body>
-		<h1>text-real</h1>
+		<header>
+			<div id="inner_header">
+				<img src="/st/materials/logo.svg">
+				<span></span>
+			</div>
+		</header>
+		<div id="header_spacer"></div>
+		<main>
+			<h1>ドキュメントを追加する</h1>
+			<form name="fm" onsubmit="sub(); return false;">
+				<p>ドキュメントのタイトルを入力して作成</p>
+				<p>
+					<input type="text" name="title" placeholder="title" required>
+					<input type="submit" value="作成">
+				</p>
+				<p id="result_message"></p>
+			</form>
+		</main>
+		<script src="/st/master.js"></script>
+		<script>
+			function sub() {
+				let data = new FormData(document.fm);
+				document.getElementById('result_message').innerText = 'お待ち下さい';
+				formDisabled(document.fm, true);
+				post('/make/', data)
+				.then(res => {
+					location = '/' + res.id;
+				}).catch(err => {
+					console.error(err);
+					document.getElementById('result_message').innerText = 'エラーが発生しました。\nページを再読み込みしてサイドお試し下さい。';
+					formDisabled(document.fm, true);
+				});
+			}
+		</script>
 	</body>
 </html>

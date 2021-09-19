@@ -8,10 +8,15 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"text/template"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/joho/godotenv"
+	"golang.org/x/crypto/bcrypt"
+
+	"github.com/otofuto/textreal/pkg/database"
 )
 
 var port string
@@ -35,6 +40,8 @@ func main() {
 	http.Handle("/st/", http.StripPrefix("/st/", http.FileServer(http.Dir("./static"))))
 
 	http.HandleFunc("/", IndexHandle)
+	http.HandleFunc("/make/", MakeHandle)
+	http.HandleFunc("/update/", UpdateHandle)
 	http.HandleFunc("/upload/", UploadHandle)
 
 	http.HandleFunc("/ws/", SocketHandle)
@@ -48,12 +55,124 @@ func IndexHandle(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 
 	if r.Method == http.MethodGet {
-		temp := template.Must(template.ParseFiles("template/index.html"))
-		if err := temp.Execute(w, ""); err != nil {
-			log.Println(err)
-			http.Error(w, "HTTP 500 Internal server error", 500)
+		id := r.URL.Path[len("/"):]
+		if id != "" {
+			idint, err := strconv.Atoi(id)
+			if err != nil {
+				http.Error(w, "id is not integer", 400)
+				return
+			}
+			doc, err := GetDoc(idint)
+			if err != nil {
+				log.Println(err)
+				http.Error(w, "failed to fetch doc", 500)
+				return
+			}
+			temp := template.Must(template.ParseFiles("template/doc.html"))
+			if err := temp.Execute(w, struct {
+				Doc Docs
+			}{
+				Doc: doc,
+			}); err != nil {
+				log.Println(err)
+				http.Error(w, "HTTP 500 Internal server error", 500)
+				return
+			}
+		} else {
+			temp := template.Must(template.ParseFiles("template/index.html"))
+			if err := temp.Execute(w, ""); err != nil {
+				log.Println(err)
+				http.Error(w, "HTTP 500 Internal server error", 500)
+				return
+			}
+		}
+	} else {
+		http.Error(w, "method not allowed", 405)
+	}
+}
+
+type Docs struct {
+	Id    int    `json:"id"`
+	Title string `json:"title"`
+	Text  string `json:"text"`
+	Token string `json:"token"`
+}
+
+func GetDoc(id int) (Docs, error) {
+	db := database.Connect()
+	defer db.Close()
+
+	var ret Docs
+
+	rows, err := db.Query("select `id`, `title`, `text`, `token` from `docs` where `id` = " + strconv.Itoa(id))
+	if err != nil {
+		return ret, err
+	}
+	defer rows.Close()
+	if rows.Next() {
+		rows.Scan(&ret.Id, &ret.Title, &ret.Text, &ret.Token)
+	} else {
+		ret.Id = 0
+	}
+	return ret, nil
+}
+
+func MakeHandle(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method == http.MethodPost {
+		title := r.FormValue("title")
+		if title == "" {
+			http.Error(w, "title is required", 400)
 			return
 		}
+
+		token, err := bcrypt.GenerateFromPassword([]byte(time.Now().Format("yyyyMMddHHmmss")), 10)
+		if err != nil {
+			log.Println(err)
+			http.Error(w, "failed to create hash", 500)
+			return
+		}
+
+		db := database.Connect()
+		defer db.Close()
+
+		sql := "insert `docs` (`title`, `text`, `token`) values (?, '', ?)"
+		ins, err := db.Prepare(sql)
+		if err != nil {
+			log.Println(err)
+			http.Error(w, "sql insert error", 500)
+			return
+		}
+		defer ins.Close()
+		result, err := ins.Exec(&title, &token)
+		newid64, err := result.LastInsertId()
+		if err != nil {
+			log.Println(err)
+			http.Error(w, "failed to fetch newid", 500)
+			return
+		}
+		res := struct {
+			Id int64 `json:"id"`
+		}{
+			Id: newid64,
+		}
+		bytes, err := json.Marshal(res)
+		if err != nil {
+			http.Error(w, "failed to convert object to json", 500)
+			return
+		}
+		fmt.Fprintf(w, string(bytes))
+	} else {
+		http.Error(w, "method not allowed", 405)
+	}
+}
+
+func UpdateHandle(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method == http.MethodPut {
+		//
 	} else {
 		http.Error(w, "method not allowed", 405)
 	}
