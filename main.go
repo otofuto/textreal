@@ -30,6 +30,14 @@ type SocketMessage struct {
 	RoomId  string `json:"room_id"`
 }
 
+type Docs struct {
+	Id        int    `json:"id"`
+	Title     string `json:"title"`
+	Text      string `json:"text"`
+	Token     string `json:"token"`
+	UpdatedAt string `json:"updated_at"`
+}
+
 func main() {
 	godotenv.Load()
 	port = os.Getenv("PORT")
@@ -68,7 +76,14 @@ func IndexHandle(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "failed to fetch doc", 500)
 				return
 			}
-			temp := template.Must(template.ParseFiles("template/doc.html"))
+			filename := "doc_view"
+			cookie, err := r.Cookie("textreal_token")
+			if err == nil {
+				if doc.Token == cookie.Value {
+					filename = "doc"
+				}
+			}
+			temp := template.Must(template.ParseFiles("template/" + filename + ".html"))
 			if err := temp.Execute(w, struct {
 				Doc Docs
 			}{
@@ -79,8 +94,32 @@ func IndexHandle(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		} else {
+			docs := make([]Docs, 0)
+			db := database.Connect()
+			defer db.Close()
+
+			sql := "select `id`, `title`, `updated_at` from `docs` order by `updated_at` limit 50"
+			rows, err := db.Query(sql)
+			if err != nil {
+				log.Println(err)
+				http.Error(w, "failed to fetch docs list", 500)
+				return
+			}
+			defer rows.Close()
+
+			for rows.Next() {
+				var doc Docs
+				err = rows.Scan(&doc.Id, &doc.Title, &doc.UpdatedAt)
+				if err == nil {
+					docs = append(docs, doc)
+				}
+			}
 			temp := template.Must(template.ParseFiles("template/index.html"))
-			if err := temp.Execute(w, ""); err != nil {
+			if err := temp.Execute(w, struct {
+				Docs []Docs
+			}{
+				Docs: docs,
+			}); err != nil {
 				log.Println(err)
 				http.Error(w, "HTTP 500 Internal server error", 500)
 				return
@@ -91,30 +130,37 @@ func IndexHandle(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-type Docs struct {
-	Id    int    `json:"id"`
-	Title string `json:"title"`
-	Text  string `json:"text"`
-	Token string `json:"token"`
-}
-
 func GetDoc(id int) (Docs, error) {
 	db := database.Connect()
 	defer db.Close()
 
 	var ret Docs
 
-	rows, err := db.Query("select `id`, `title`, `text`, `token` from `docs` where `id` = " + strconv.Itoa(id))
+	rows, err := db.Query("select `id`, `title`, `text`, `token`, `updated_at` from `docs` where `id` = " + strconv.Itoa(id))
 	if err != nil {
 		return ret, err
 	}
 	defer rows.Close()
 	if rows.Next() {
-		rows.Scan(&ret.Id, &ret.Title, &ret.Text, &ret.Token)
+		rows.Scan(&ret.Id, &ret.Title, &ret.Text, &ret.Token, &ret.UpdatedAt)
 	} else {
 		ret.Id = 0
 	}
 	return ret, nil
+}
+
+func UpdateDoc(id int, text, token string) error {
+	db := database.Connect()
+	defer db.Close()
+
+	sql := "update `docs` set `text` = ? where `id` = ? and `token` = ?"
+	upd, err := db.Prepare(sql)
+	if err != nil {
+		return err
+	}
+	defer upd.Close()
+	_, err = upd.Exec(&text, &id, &token)
+	return err
 }
 
 func MakeHandle(w http.ResponseWriter, r *http.Request) {
@@ -127,11 +173,18 @@ func MakeHandle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		token, err := bcrypt.GenerateFromPassword([]byte(time.Now().Format("yyyyMMddHHmmss")), 10)
+		var token string
+		cookie, err := r.Cookie("textreal_token")
 		if err != nil {
-			log.Println(err)
-			http.Error(w, "failed to create hash", 500)
-			return
+			token_bytes, err := bcrypt.GenerateFromPassword([]byte(time.Now().Format("yyyyMMddHHmmss")), 10)
+			if err != nil {
+				log.Println(err)
+				http.Error(w, "failed to create hash", 500)
+				return
+			}
+			token = string(token_bytes)
+		} else {
+			token = cookie.Value
 		}
 
 		db := database.Connect()
@@ -162,6 +215,14 @@ func MakeHandle(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "failed to convert object to json", 500)
 			return
 		}
+		cookie = &http.Cookie{
+			Name:     "textreal_token",
+			Value:    token,
+			Path:     "/",
+			HttpOnly: true,
+			MaxAge:   3600 * 24 * 7,
+		}
+		http.SetCookie(w, cookie)
 		fmt.Fprintf(w, string(bytes))
 	} else {
 		http.Error(w, "method not allowed", 405)
@@ -172,7 +233,40 @@ func UpdateHandle(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	if r.Method == http.MethodPut {
-		//
+		cookie, err := r.Cookie("textreal_token")
+		if err != nil {
+			http.Error(w, "token is not set", 400)
+			return
+		}
+
+		if r.FormValue("id") != "" {
+			id, err := strconv.Atoi(r.FormValue("id"))
+			if err != nil {
+				http.Error(w, "id is not integer", 400)
+				return
+			}
+			err = UpdateDoc(id, r.FormValue("text"), cookie.Value)
+			if err != nil {
+				log.Println(err)
+				http.Error(w, "failed to update query", 500)
+				return
+			}
+			fmt.Fprintf(w, "true")
+			for client, wid := range clients {
+				if wid == r.FormValue("id") {
+					err := client.WriteJSON(SocketMessage{
+						Message: r.FormValue("text"),
+					})
+					if err != nil {
+						log.Printf("error: %v", err)
+						client.Close()
+						delete(clients, client)
+					}
+				}
+			}
+		} else {
+			http.Error(w, "parameter 'id' is required", 400)
+		}
 	} else {
 		http.Error(w, "method not allowed", 405)
 	}

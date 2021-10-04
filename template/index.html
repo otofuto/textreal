@@ -96,6 +96,14 @@
 				</p>
 				<p id="result_message"></p>
 			</form>
+			<div id="docslist">
+				{{ range .Docs }}
+				<article data-id="{{ .Id }}" onclick="location = '/{{ .Id }}';">
+					<div>{{ .Title }}</div>
+					<time>{{ .UpdatedAt }}</time>
+				</article>
+				{{ end }}
+			</div>
 		</main>
 		<script src="/st/master.js"></script>
 		<script>

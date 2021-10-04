@@ -59,6 +59,7 @@
 				border: solid 1px gray;
 				width: 100%;
 				height: calc(100vh - 160px);
+				overflow: auto;
 			}
 		</style>
 	</head>
@@ -72,22 +73,31 @@
 		<div id="header_spacer"></div>
 		<main>
 			<h1>{{ .Doc.Title }}</h1>
-			<textarea id="textarea">{{ .Doc.Text }}</textarea>
+			<pre id="textarea">{{ .Doc.Text }}</pre>
 		</main>
 		<script src="/st/master.js"></script>
 		<script>
-			document.getElementById('textarea').addEventListener('keydown', e => {
-				if (e.key == 'Enter') {
-					let data = new FormData();
-					data.append('id', '{{ .Doc.Id }}');
-					data.append('text', e.target.value);
-					put('/update/', data)
-					.then(() => {}).catch(err => {
-						console.error(err);
-						alert('データベースへの書き込みに失敗しました。');
-					});
+			function makeWebSocket() {
+				try {
+					ws = new WebSocket((location.protocol == 'http:' ? 'ws://' : 'wss://') + location.host + "/ws/{{ .Doc.Id }}");
+				} catch(ex) {
+					alert("サーバーへの接続に失敗しました。");
+					console.error(ex);
 				}
-			});
+			
+				ws.addEventListener("message", e => {
+					let data = JSON.parse(e.data);
+					document.getElementById('textarea').innerText = data.message;
+				});
+			
+				ws.addEventListener("open", e => {
+				});
+			
+				ws.addEventListener("closed", e => {
+					makeWebSocket();
+				});
+			}
+			makeWebSocket();
 		</script>
 	</body>
 </html>
