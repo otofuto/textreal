@@ -76,6 +76,59 @@
 				outline: none;
 				height: 30px;
 			}
+
+			#docslist article {
+				display: block;
+				position: relative;
+				background-color: rgba(0, 0, 0, 0.1);
+				padding: 20px;
+				box-sizing: border-box;
+				border-radius: 0 20px 0 0;
+				margin: 20px auto;
+				overflow: hidden;
+				z-index: 9;
+			}
+
+			#docslist article:after {
+				content: '';
+				display: block;
+				position: absolute;
+				left: 0;
+				top: calc(100% - 2px);
+				width: 100%;
+				height: 100%;
+				background-color: dimgray;
+				z-index: 10;
+				transition: all 200ms 0ms ease;
+			}
+
+			#docslist article:hover:after {
+				top: 0;
+			}
+
+			#docslist article div {
+				font-size: 1.2em;
+				position: relative;
+				z-index: 11;
+				transition: all 200ms 0ms ease;
+			}
+
+			#docslist article:hover div {
+				color: white;
+			}
+
+			#docslist article time {
+				display: block;
+				color: gray;
+				text-align: right;
+				position: relative;
+				z-index: 11;
+				transition: all 200ms 0ms ease;
+			}
+
+			#docslist article:hover time {
+				color: whitesmoke;
+			}
 		</style>
 	</head>
 	<body>
@@ -92,19 +145,27 @@
 				<p>ドキュメントのタイトルを入力して作成</p>
 				<p>
 					<input type="text" name="title" placeholder="title" required>
+				</p>
+				<p>閲覧用パスコード(8桁以下の半角数字)(任意)</p>
+				<p><input type="number" maxlength="8" name="pass" placeholder="passcode"></p>
+				<p>
 					<input type="submit" value="作成">
 				</p>
 				<p id="result_message"></p>
 			</form>
+			<p>誰かのドキュメント</p>
 			<div id="docslist">
 				{{ range .Docs }}
-				<article data-id="{{ .Id }}" onclick="location = '/{{ .Id }}';">
+				<article data-id="{{ .Id }}" data-pass="{{ if eq .Pass "" }}false{{ else }}true{{ end }}" onclick="opendoc(this)">
 					<div>{{ .Title }}</div>
-					<time>{{ .UpdatedAt }}</time>
+					<time>最終更新日時: {{ .UpdatedAt }}</time>
 				</article>
 				{{ end }}
 			</div>
 		</main>
+		<form name="postdoc" method="post" style="display: none;">
+			<input type="hidden" name="pass">
+		</form>
 		<script src="/st/master.js"></script>
 		<script>
 			function sub() {
@@ -119,6 +180,25 @@
 					document.getElementById('result_message').innerText = 'エラーが発生しました。\nページを再読み込みしてサイドお試し下さい。';
 					formDisabled(document.fm, true);
 				});
+			}
+
+			function opendoc(elm) {
+				if (elm.getAttribute('data-pass') == 'true') {
+					let pass = prompt('パスコードを入力してください');
+					if (pass != '') {
+						document.postdoc.action = '/' + elm.getAttribute('data-id');
+						document.postdoc.pass.value = pass;
+						document.postdoc.submit();
+						elm.style.backgroundColor = 'dimgray';
+						elm.querySelector('div').style.color = 'white';
+						elm.querySelector('time').style.color = 'whitesmoke';
+						return;
+					} else return;
+				}
+				elm.style.backgroundColor = 'dimgray';
+				elm.querySelector('div').style.color = 'white';
+				elm.querySelector('time').style.color = 'whitesmoke';
+				location = '/' + elm.getAttribute('data-id');
 			}
 		</script>
 	</body>

@@ -33,6 +33,7 @@ type SocketMessage struct {
 type Docs struct {
 	Id        int    `json:"id"`
 	Title     string `json:"title"`
+	Pass      string `json:"pass"`
 	Text      string `json:"text"`
 	Token     string `json:"token"`
 	UpdatedAt string `json:"updated_at"`
@@ -83,6 +84,10 @@ func IndexHandle(w http.ResponseWriter, r *http.Request) {
 					filename = "doc"
 				}
 			}
+			if doc.Pass != "" && filename == "doc_view" {
+				http.Redirect(w, r, "/", 303)
+				return
+			}
 			temp := template.Must(template.ParseFiles("template/" + filename + ".html"))
 			if err := temp.Execute(w, struct {
 				Doc Docs
@@ -98,7 +103,7 @@ func IndexHandle(w http.ResponseWriter, r *http.Request) {
 			db := database.Connect()
 			defer db.Close()
 
-			sql := "select `id`, `title`, `updated_at` from `docs` order by `updated_at` limit 50"
+			sql := "select `id`, `title`, `pass`, `updated_at` from `docs` order by `updated_at` limit 50"
 			rows, err := db.Query(sql)
 			if err != nil {
 				log.Println(err)
@@ -109,7 +114,7 @@ func IndexHandle(w http.ResponseWriter, r *http.Request) {
 
 			for rows.Next() {
 				var doc Docs
-				err = rows.Scan(&doc.Id, &doc.Title, &doc.UpdatedAt)
+				err = rows.Scan(&doc.Id, &doc.Title, &doc.Pass, &doc.UpdatedAt)
 				if err == nil {
 					docs = append(docs, doc)
 				}
@@ -125,6 +130,44 @@ func IndexHandle(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+	} else if r.Method == http.MethodPost {
+		id := r.URL.Path[len("/"):]
+		if id != "" {
+			idint, err := strconv.Atoi(id)
+			if err != nil {
+				http.Error(w, "id is not integer", 400)
+				return
+			}
+			doc, err := GetDoc(idint)
+			if err != nil {
+				log.Println(err)
+				http.Error(w, "failed to fetch doc", 500)
+				return
+			}
+			filename := "doc_view"
+			cookie, err := r.Cookie("textreal_token")
+			if err == nil {
+				if doc.Token == cookie.Value {
+					filename = "doc"
+				}
+			}
+			if doc.Pass != r.FormValue("pass") && filename == "doc_view" {
+				http.Error(w, "パスコードが間違っています。", 405)
+				return
+			}
+			temp := template.Must(template.ParseFiles("template/" + filename + ".html"))
+			if err := temp.Execute(w, struct {
+				Doc Docs
+			}{
+				Doc: doc,
+			}); err != nil {
+				log.Println(err)
+				http.Error(w, "HTTP 500 Internal server error", 500)
+				return
+			}
+		} else {
+			http.Error(w, "page not found", 404)
+		}
 	} else {
 		http.Error(w, "method not allowed", 405)
 	}
@@ -136,13 +179,13 @@ func GetDoc(id int) (Docs, error) {
 
 	var ret Docs
 
-	rows, err := db.Query("select `id`, `title`, `text`, `token`, `updated_at` from `docs` where `id` = " + strconv.Itoa(id))
+	rows, err := db.Query("select `id`, `title`, `pass`, `text`, `token`, `updated_at` from `docs` where `id` = " + strconv.Itoa(id))
 	if err != nil {
 		return ret, err
 	}
 	defer rows.Close()
 	if rows.Next() {
-		rows.Scan(&ret.Id, &ret.Title, &ret.Text, &ret.Token, &ret.UpdatedAt)
+		rows.Scan(&ret.Id, &ret.Title, &ret.Pass, &ret.Text, &ret.Token, &ret.UpdatedAt)
 	} else {
 		ret.Id = 0
 	}
@@ -190,7 +233,7 @@ func MakeHandle(w http.ResponseWriter, r *http.Request) {
 		db := database.Connect()
 		defer db.Close()
 
-		sql := "insert `docs` (`title`, `text`, `token`) values (?, '', ?)"
+		sql := "insert `docs` (`title`, `pass`, `text`, `token`) values (?, ?, '', ?)"
 		ins, err := db.Prepare(sql)
 		if err != nil {
 			log.Println(err)
@@ -198,7 +241,7 @@ func MakeHandle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer ins.Close()
-		result, err := ins.Exec(&title, &token)
+		result, err := ins.Exec(&title, r.FormValue("pass"), &token)
 		newid64, err := result.LastInsertId()
 		if err != nil {
 			log.Println(err)
@@ -220,7 +263,6 @@ func MakeHandle(w http.ResponseWriter, r *http.Request) {
 			Value:    token,
 			Path:     "/",
 			HttpOnly: true,
-			MaxAge:   3600 * 24 * 7,
 		}
 		http.SetCookie(w, cookie)
 		fmt.Fprintf(w, string(bytes))
