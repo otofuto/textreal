@@ -51,6 +51,7 @@ func main() {
 	http.HandleFunc("/", IndexHandle)
 	http.HandleFunc("/make/", MakeHandle)
 	http.HandleFunc("/update/", UpdateHandle)
+	http.HandleFunc("/login/", LoginHandle)
 	http.HandleFunc("/upload/", UploadHandle)
 
 	http.HandleFunc("/ws/", SocketHandle)
@@ -119,11 +120,19 @@ func IndexHandle(w http.ResponseWriter, r *http.Request) {
 					docs = append(docs, doc)
 				}
 			}
+
+			ck := ""
+			cookie, err := r.Cookie("textreal_token")
+			if err == nil {
+				ck = cookie.Value
+			}
 			temp := template.Must(template.ParseFiles("template/index.html"))
 			if err := temp.Execute(w, struct {
-				Docs []Docs
+				Docs   []Docs
+				Cookie string
 			}{
-				Docs: docs,
+				Docs:   docs,
+				Cookie: ck,
 			}); err != nil {
 				log.Println(err)
 				http.Error(w, "HTTP 500 Internal server error", 500)
@@ -249,9 +258,11 @@ func MakeHandle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		res := struct {
-			Id int64 `json:"id"`
+			Id    int64  `json:"id"`
+			Token string `json:"token"`
 		}{
-			Id: newid64,
+			Id:    newid64,
+			Token: token,
 		}
 		bytes, err := json.Marshal(res)
 		if err != nil {
@@ -309,6 +320,21 @@ func UpdateHandle(w http.ResponseWriter, r *http.Request) {
 		} else {
 			http.Error(w, "parameter 'id' is required", 400)
 		}
+	} else {
+		http.Error(w, "method not allowed", 405)
+	}
+}
+
+func LoginHandle(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		cookie := &http.Cookie{
+			Name:     "textreal_token",
+			Value:    r.FormValue("hash"),
+			Path:     "/",
+			HttpOnly: true,
+		}
+		http.SetCookie(w, cookie)
+		fmt.Fprintf(w, "true")
 	} else {
 		http.Error(w, "method not allowed", 405)
 	}

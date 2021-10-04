@@ -63,7 +63,7 @@
 				padding: 12px;
 				box-sizing: border-box;
 				width: 90%;
-				margin: 0 auto;
+				margin: 5px auto;
 			}
 
 			input {
@@ -153,6 +153,16 @@
 				</p>
 				<p id="result_message"></p>
 			</form>
+			<form name="login" onsubmit="sub2(); return false;">
+				<p>ログイン</p>
+				<p><input type="text" name="hash"></p>
+				<p><input type="submit" value="ログイン"></p>
+				{{ if ne .Cookie "" }}
+				<p id="logintoken">現在ログイン中: {{ .Cookie }}</p>
+				{{ else }}
+				<p id="logintoken"></p>
+				{{ end }}
+			</form>
 			<p>誰かのドキュメント</p>
 			<div id="docslist">
 				{{ range .Docs }}
@@ -174,11 +184,22 @@
 				formDisabled(document.fm, true);
 				post('/make/', data)
 				.then(res => {
+					document.getElementById('logintoken').innerText = '現在ログイン中: ' + res.token;
 					location = '/' + res.id;
 				}).catch(err => {
 					console.error(err);
 					document.getElementById('result_message').innerText = 'エラーが発生しました。\nページを再読み込みしてサイドお試し下さい。';
 					formDisabled(document.fm, true);
+				});
+			}
+
+			function sub2() {
+				post('/login/', new FormData(document.login))
+				.then(res => {
+					document.getElementById('logintoken').innerText = '現在ログイン中: ' + document.login.hash.value;
+					document.login.hash.value = "";
+				}).catch(err => {
+					alert('失敗しました。');
 				});
 			}
 
