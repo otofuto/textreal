@@ -141,6 +141,15 @@
 		</header>
 		<div id="header_spacer"></div>
 		<main>
+			<p>
+				<input type="txt" id="txt">
+				<input type="button" onclick="(() => {
+					fetch('/test/?txt=' + document.getElementById('txt').value).then(res => res.text())
+					.then(res => {
+						console.log(res);
+					});
+				})()" value="button">
+			</p>
 			<h1>ドキュメントを追加する</h1>
 			<form name="fm" onsubmit="sub(); return false;">
 				<p>ドキュメントのタイトルを入力して作成</p>
@@ -207,7 +216,7 @@
 			function opendoc(elm) {
 				if (elm.getAttribute('data-pass') == 'true') {
 					let pass = prompt('パスコードを入力してください');
-					if (pass != '') {
+					if (pass != '' && pass != null) {
 						document.postdoc.action = '/' + elm.getAttribute('data-id');
 						document.postdoc.pass.value = pass;
 						document.postdoc.submit();

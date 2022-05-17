@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"strconv"
 	"text/template"
 	"time"
@@ -53,6 +54,7 @@ func main() {
 	http.HandleFunc("/update/", UpdateHandle)
 	http.HandleFunc("/login/", LoginHandle)
 	http.HandleFunc("/upload/", UploadHandle)
+	http.HandleFunc("/test/", TestHandle)
 
 	http.HandleFunc("/ws/", SocketHandle)
 	go handleMessages()
@@ -435,5 +437,29 @@ func handleMessages() {
 				}
 			}
 		}
+	}
+}
+
+func TestHandle(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Content-Type", "application/json")
+
+	if r.Method == http.MethodGet {
+		if r.FormValue("txt") != "" {
+			out, err := exec.Command("./other/other", r.FormValue("txt")).Output()
+			if err != nil {
+				log.Println(err)
+				http.Error(w, err.Error(), 500)
+				if out != nil {
+					log.Println(out)
+				}
+				return
+			}
+			log.Println(string(out))
+			fmt.Fprintf(w, "true")
+		} else {
+			http.Error(w, "", 400)
+		}
+	} else {
+		http.Error(w, "method not allowed", 405)
 	}
 }
